@@ -6,18 +6,39 @@ const treeImg = new Image();
 const riverImg = new Image();
 
 var movingBalls = [];
+var ripples = [];
+var initialVelocity = 0;
 
-function initalizeMovingBall(id, size, velocity) {
+function initializeRipple(position) {
+  ripples.push({ x: position.x, y: position.y, size: 1, img: treeImg });
+}
+
+function drawRipples(ctx, time) {
+  ripples.forEach(function(ripple) {
+    ctx.save();
+    drawPolygon(ctx, ripple.x, ripple.y, ripple.img, time, { size: ripple.size, sides: 'circle' });
+    ctx.restore();
+    ripple.size = ripple.size + 5;
+    if(ripple.size > 400) { ripples.shift(); }
+  });
+}
+
+function initalizeMovingBall(id, size, initialPosition, velocity) {
   var ball = {
     id: id,
-    x: canvas.width/2,
-    y: canvas.height/2,
-    dx: velocity.x,
-    dy: velocity.y,
+    x: initialPosition.x,
+    y: initialPosition.y,
+    dx: velocity.dx,
+    dy: velocity.dy,
     size: size
   };
 
   movingBalls.push(ball);
+}
+
+function moveBall(ball) {
+  ball.x = ball.x + ball.dx;
+  ball.y = ball.y + ball.dy;
 }
 
 function collideWall(ball) {
@@ -28,14 +49,13 @@ function collideWall(ball) {
   if ((ball.y + ball.dy > (canvas.height - ball.size)) || (ball.y + ball.dy < ball.size)) {
     ball.dy = -ball.dy;
   }
-
-  ball.x = ball.x + ball.dx;
-  ball.y = ball.y + ball.dy;
 };
 
 function collideBall(ball) {
-  movingBalls.forEach( function(movingBall) {
-    if (ball.id == movingBall.id) { continue  }
+  for (var i = ball.id; i < movingBalls.length; i++) {
+    var movingBall = movingBalls[i];
+    if (!movingBall) { return; }
+    if (ball.id == movingBall.id) { return;  }
 
     var delta_x = movingBall.x - ball.x;
     var delta_y = movingBall.y - ball.y;
@@ -43,20 +63,37 @@ function collideBall(ball) {
     var collisionDistance = ball.size + movingBall.size;
 
     if (distance < collisionDistance) {
-      var angle = Math.atan2(delta_x, delta_y);
-      var new_x = ball.x + Math.cos(angle) * collisionDistance;
-      var new_y = ball.y + Math.sin(angle) * collisionDistance;
+      var collisionAngle = Math.atan2(delta_y, delta_x);
+      var speedBall = Math.sqrt(ball.dx * ball.dx + ball.dy * ball.dy);
+      var speedMovingBall = Math.sqrt(movingBall.dx * movingBall.dx + movingBall.dy * movingBall.dy);
+      var angleBall = Math.atan2(ball.dy, ball.dx);
+      var angleMovingBall = Math.atan2(movingBall.dy, movingBall.dx);
 
-      var acceleration_x = (new_x - ball.x);
-      var acceleration_y = (new_y - ball.y);
+      var gap = collisionDistance - distance;
 
-      ball.dx = ball.dx - acceleration_x;
-      ball.dy = ball.dy - acceleration_y;
+      new_ball_dx = speedMovingBall * Math.cos(angleMovingBall - collisionAngle) * Math.cos(collisionAngle) +
+        speedBall * Math.sin(angleBall - collisionAngle) * Math.cos(collisionAngle + Math.PI/2);
+      new_ball_dy = speedMovingBall * Math.cos(angleMovingBall - collisionAngle) * Math.sin(collisionAngle) +
+        speedBall * Math.sin(angleBall - collisionAngle) * Math.sin(collisionAngle + Math.PI/2);
 
-      movingBall.dx = movingBall.dx - acceleration_x;
-      movingBall.dy = movingBall.dy - acceleration_y;
+      new_moving_ball_dx = speedBall * Math.cos(angleBall - collisionAngle) * Math.cos(collisionAngle) +
+        speedMovingBall * Math.sin(angleMovingBall - collisionAngle) * Math.cos(collisionAngle + Math.PI/2);
+      new_moving_ball_dy = speedBall * Math.cos(angleBall - collisionAngle) * Math.sin(collisionAngle) +
+        speedMovingBall * Math.sin(angleMovingBall - collisionAngle) * Math.sin(collisionAngle + Math.PI/2);
+
+      ball.dx = new_ball_dx
+      ball.dy = new_ball_dy
+      movingBall.dx = new_moving_ball_dx
+      movingBall.dy = new_moving_ball_dy
+
+      var contactPoint = {
+        x: ball.x + ball.size * Math.cos(collisionAngle),
+        y: ball.y + ball.size * Math.sin(collisionAngle)
+      }
+
+      initializeRipple({ x: contactPoint.x, y: contactPoint.y });
     }
-  });
+  };
 }
 
 function drawMovingBall(ball, ctx, time) {
@@ -70,6 +107,7 @@ function drawMovingBall(ball, ctx, time) {
 
   collideWall(ball);
   collideBall(ball);
+  moveBall(ball);
   //console.log(" ball x restriction: " + (canvas.width - ball.size) + " ball y restriction: " + (canvas.height - ball.size));
   //console.log("ball x: " + ball.x + " ball dx: " + ball.dx + " ball y: " + ball.y + " ball dy: " + ball.dy);
 }
@@ -244,7 +282,10 @@ function drawElements(){
   movingBalls.forEach( function(ball) {
     drawMovingBall(ball, ctx, time);
   });
+
+  drawRipples(ctx, time);
   //drawCircle(ctx, treeImg, time);
+
   drawBackgroundImage(ctx, backgroundImg, time);
 
   window.requestAnimationFrame(drawElements);
@@ -263,8 +304,11 @@ onDocumentRready(function() {
   riverImg.src = 'https://i.pinimg.com/originals/e6/6f/66/e66f66f33eebaa83b801493559fd30e6.jpg';
 
 
-  initalizeMovingBall(1, 100, { x: 4, y: 2 });
-  initalizeMovingBall(2, 100, { x: 2, y: 2 });
+  initalizeMovingBall(1, 100, { x: canvas.width/2, y: canvas.height/2 } ,{ dx: 4, dy: 2 });
+  initalizeMovingBall(2, 100, { x: 100, y: 300 }, { dx: 2, dy: 2 });
+  initalizeMovingBall(3, 100, { x: 500, y: 300 }, { dx: -5, dy: 2 });
+  initalizeMovingBall(4, 100, { x: 500, y: 700 }, { dx: -5, dy: 2 });
+  //initalizeMovingBall(3, 400, { x: 600, y: 700 }, { dx: 5, dy: 5 });
 
   window.requestAnimationFrame(drawElements);
 });
